@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String    @id @default(uuid())
+  matric_number  String?   @unique
+  email          String    @unique
+  password_hash  String
+  full_name      String
+  phone          String?
+  role           String    // superadmin | dept_admin | lecturer | student
+  department_id  String?
+  faculty        String?
+  department     String?   // student's department name (for RESTRICTED filtering)
+  is_verified    Boolean   @default(false)
+  created_at     DateTime  @default(now())
+
+  department_rel Department?  @relation("UserDepartment", fields: [department_id], references: [id])
+  created_departments Department[] @relation("DepartmentCreator")
+  sessions_created Session[] @relation("SessionCreator")
+  queue_entries   QueueEntry[]
+  waitlist_entries NoShowWaitlist[]
+  notifications   Notification[]
+  session_logs    SessionLog[]
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  created_by  String?
+  created_at  DateTime @default(now())
+
+  creator User? @relation("DepartmentCreator", fields: [created_by], references: [id])
+  users   User[] @relation("UserDepartment")
+  sessions Session[]
+}
+
+// Courses/programmes offered by the school (for student registration). Separate from Department (organizational units).
+model Course {
+  id   String @id @default(uuid())
+  name String @unique
+}
+
+model Session {
+  id              String   @id @default(uuid())
+  title           String
+  department_id   String
+  created_by      String
+  date            DateTime @db.Date
+  start_time      DateTime @db.Time(0)
+  capacity        Int
+  slot_duration   Int      // minutes
+  visibility      String   @default("OPEN")  // OPEN | RESTRICTED
+  priority_enabled Boolean @default(false)
+  state            String   @default("DRAFT") // DRAFT|OPEN|ACTIVE|PAUSED|CLOSED
+  total_enrolled   Int      @default(0)
+  current_serving  Int      @default(0)   // queue_number currently being served (0 = none)
+  created_at       DateTime @default(now())
+
+  department Department @relation(fields: [department_id], references: [id])
+  creator    User       @relation("SessionCreator", fields: [created_by], references: [id])
+  queue_entries QueueEntry[]
+  waitlist    NoShowWaitlist[]
+  session_logs SessionLog[]
+}
+
+model QueueEntry {
+  id             String    @id @default(uuid())
+  session_id     String
+  student_id     String
+  queue_number   Int
+  assigned_time  DateTime
+  priority_level String    @default("routine") // routine | urgent | emergency
+  status         String    @default("waiting") // waiting | serving | completed | no_show | cancelled
+  reminder_sent  Boolean   @default(false)
+  joined_at      DateTime  @default(now())
+  served_at      DateTime?
+
+  session Session @relation(fields: [session_id], references: [id])
+  student User    @relation(fields: [student_id], references: [id])
+  notifications Notification[]
+}
+
+model NoShowWaitlist {
+  id         String    @id @default(uuid())
+  session_id String
+  student_id String
+  joined_at  DateTime  @default(now())
+  promoted_at DateTime?
+  status     String    @default("waiting") // waiting | promoted | expired
+
+  session Session @relation(fields: [session_id], references: [id])
+  student User    @relation(fields: [student_id], references: [id])
+}
+
+model Notification {
+  id              String    @id @default(uuid())
+  student_id      String
+  entry_id        String?
+  message         String
+  type            String    // confirmation | reminder | alert | promotion
+  sent_at         DateTime  @default(now())
+  read_at         DateTime? // when student marked as read
+  delivery_status String    @default("sent") // sent | delivered | failed
+
+  student User         @relation(fields: [student_id], references: [id])
+  entry   QueueEntry?  @relation(fields: [entry_id], references: [id])
+}
+
+model SessionLog {
+  id         String   @id @default(uuid())
+  session_id String
+  admin_id   String
+  action     String   // called | skipped | paused | resumed | closed | state_changed
+  metadata   Json?
+  timestamp  DateTime @default(now())
+
+  session Session @relation(fields: [session_id], references: [id])
+  admin   User    @relation(fields: [admin_id], references: [id])
+}
