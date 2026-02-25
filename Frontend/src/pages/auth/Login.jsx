@@ -44,6 +44,7 @@ export default function Login() {
       const { data } = await api.get('/auth/me');
       const role = data?.data?.user?.role;
       if (role === 'student') navigate('/student', { replace: true });
+      else if (role === 'organizer') navigate('/org', { replace: true });
       else navigate('/admin', { replace: true });
     } catch (err) {
       const message =
@@ -73,9 +74,9 @@ export default function Login() {
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              UNILAG Queue
+              QueueFlow
             </CardTitle>
-            <CardDescription>Sign in</CardDescription>
+            <CardDescription>Sign in to your account</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -101,7 +102,7 @@ export default function Login() {
               No account? <Link to="/register" className="text-primary hover:underline font-medium">Register as student</Link>
             </p>
             <p className="mt-2 text-center text-xs text-text-muted">
-              Staff? Log in with your email. Students can use email or matric number.
+              Log in with your email. UNILAG students can also use their matric number.
             </p>
           </CardContent>
         </Card>

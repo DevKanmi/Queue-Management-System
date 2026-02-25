@@ -88,9 +88,9 @@ export default function Register() {
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-3xl bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              UNILAG Queue
+              QueueFlow
             </CardTitle>
-            <CardDescription>Student registration</CardDescription>
+            <CardDescription>UNILAG student registration</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -128,6 +128,12 @@ export default function Register() {
             </form>
             <p className="mt-6 text-center text-sm text-text-secondary">
               Already have an account? <Link to="/login" className="text-primary hover:underline font-medium">Log in</Link>
+            </p>
+            <p className="mt-2 text-center text-xs text-text-muted">
+              Not a student?{' '}
+              <Link to="/register/organizer" className="text-primary hover:underline">
+                Register as a business or individual
+              </Link>
             </p>
           </CardContent>
         </Card>

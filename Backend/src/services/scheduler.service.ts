@@ -38,14 +38,16 @@ async function runReminderJob() {
         where: { id: entry.id },
         data: { reminder_sent: true },
       });
-      await prisma.notification.create({
-        data: {
-          student_id: entry.student_id,
-          entry_id: entry.id,
-          message: `Reminder: Your slot for ${entry.session.title} is around ${entry.assigned_time.toLocaleString()}. Queue #${entry.queue_number}.`,
-          type: 'reminder',
-        },
-      });
+      if (entry.student_id) {
+        await prisma.notification.create({
+          data: {
+            student_id: entry.student_id,
+            entry_id: entry.id,
+            message: `Reminder: Your slot for ${entry.session.title} is around ${entry.assigned_time.toLocaleString()}. Queue #${entry.queue_number}.`,
+            type: 'reminder',
+          },
+        });
+      }
     }
     if (entries.length > 0) {
       console.log(`[Scheduler] Sent ${entries.length} reminder(s).`);
@@ -78,13 +80,15 @@ async function runNoShowJob() {
         data: { total_enrolled: { decrement: 1 } },
       });
       await compactQueue(entry.session_id);
-      socketService.studentNoShow(entry.session.department_id, {
-        sessionId: entry.session_id,
-        queueNumber: entry.queue_number,
-        studentId: entry.student_id,
-      });
+      if (entry.session.department_id && entry.student_id) {
+        socketService.studentNoShow(entry.session.department_id, {
+          sessionId: entry.session_id,
+          queueNumber: entry.queue_number,
+          studentId: entry.student_id,
+        });
+      }
       const promoted = await promoteFromWaitlist(entry.session_id);
-      if (promoted) {
+      if (promoted && promoted.student_id) {
         const student = await prisma.user.findUnique({
           where: { id: promoted.student_id },
           select: { email: true },

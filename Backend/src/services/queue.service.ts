@@ -10,10 +10,7 @@ export type JoinResult =
  */
 async function lockSessionAndGet(tx: Prisma.TransactionClient, sessionId: string) {
   await tx.$queryRaw`SELECT id, capacity, slot_duration, "total_enrolled", priority_enabled FROM "Session" WHERE id = ${sessionId} FOR UPDATE`;
-  const session = await tx.session.findUnique({
-    where: { id: sessionId },
-    include: { department: { select: { name: true } } },
-  });
+  const session = await tx.session.findUnique({ where: { id: sessionId } });
   return session;
 }
 
@@ -33,41 +30,58 @@ function assignedTimeForSlot(
   return t;
 }
 
+export type GuestJoinOptions = {
+  guest_name: string;
+  guest_phone: string;
+  guest_email?: string;
+  guest_token: string;
+};
+
 /**
- * Student joins queue. Uses transaction with FOR UPDATE on session so concurrent joins are safe.
+ * Join queue. Supports both authenticated students (studentId) and anonymous guests (guestOptions).
+ * Uses transaction with FOR UPDATE on session so concurrent joins are safe.
  * If session is full, adds to no_show_waitlist and returns waitlist position.
- * New joiners always go to the end of the queue; priority is set by admin only (stored as routine here).
  */
 export async function joinQueue(
   sessionId: string,
-  studentId: string,
-  _priorityLevel?: 'routine' | 'urgent' | 'emergency'
+  studentId: string | null,
+  _priorityLevel?: 'routine' | 'urgent' | 'emergency',
+  guestOptions?: GuestJoinOptions
 ): Promise<JoinResult> {
   return await prisma.$transaction(async (tx) => {
     const session = await lockSessionAndGet(tx, sessionId);
     if (!session) throw new Error('Session not found');
 
-    const existingEntry = await tx.queueEntry.findFirst({
-      where: { session_id: sessionId, student_id: studentId, status: { notIn: ['cancelled', 'no_show'] } },
-    });
-    if (existingEntry) throw new Error('You are already in this queue or waitlist');
+    if (studentId) {
+      const existingEntry = await tx.queueEntry.findFirst({
+        where: { session_id: sessionId, student_id: studentId, status: { notIn: ['cancelled', 'no_show'] } },
+      });
+      if (existingEntry) throw new Error('You are already in this queue or waitlist');
 
-    const existingWaitlist = await tx.noShowWaitlist.findFirst({
-      where: { session_id: sessionId, student_id: studentId, status: 'waiting' },
-    });
-    if (existingWaitlist) throw new Error('You are already on the waitlist');
+      const existingWaitlist = await tx.noShowWaitlist.findFirst({
+        where: { session_id: sessionId, student_id: studentId, status: 'waiting' },
+      });
+      if (existingWaitlist) throw new Error('You are already on the waitlist');
+    }
 
     const count = session.total_enrolled;
     const capacity = session.capacity;
 
     if (count >= capacity) {
-      const waitlistCount = await tx.noShowWaitlist.count({
-        where: { session_id: sessionId, status: 'waiting' },
-      });
-      await tx.noShowWaitlist.create({
-        data: { session_id: sessionId, student_id: studentId, status: 'waiting' },
-      });
-      return { type: 'waitlist', position: waitlistCount + 1 };
+      if (studentId) {
+        const waitlistCount = await tx.noShowWaitlist.count({
+          where: { session_id: sessionId, status: 'waiting' },
+        });
+        await tx.noShowWaitlist.create({
+          data: { session_id: sessionId, student_id: studentId, status: 'waiting' },
+        });
+        return { type: 'waitlist', position: waitlistCount + 1 };
+      } else {
+        const waitlistCount = await tx.noShowWaitlist.count({
+          where: { session_id: sessionId, status: 'waiting' },
+        });
+        return { type: 'waitlist', position: waitlistCount + 1 };
+      }
     }
 
     const sessionDate = new Date(session.date);
@@ -83,30 +97,40 @@ export async function joinQueue(
 
     const assignedTime = assignedTimeForSlot(sessionDate, startTime, slotDuration, queueNumber);
 
-    const entry = await tx.queueEntry.create({
-      data: {
-        session_id: sessionId,
-        student_id: studentId,
-        queue_number: queueNumber,
-        assigned_time: assignedTime,
-        priority_level: 'routine',
-        status: 'waiting',
-      },
-    });
+    const entryData: Parameters<typeof tx.queueEntry.create>[0]['data'] = {
+      session_id: sessionId,
+      queue_number: queueNumber,
+      assigned_time: assignedTime,
+      priority_level: 'routine',
+      status: 'waiting',
+      ...(studentId ? { student_id: studentId } : {}),
+      ...(guestOptions
+        ? {
+            guest_name: guestOptions.guest_name,
+            guest_phone: guestOptions.guest_phone,
+            guest_email: guestOptions.guest_email || null,
+            guest_token: guestOptions.guest_token,
+          }
+        : {}),
+    };
+
+    const entry = await tx.queueEntry.create({ data: entryData });
 
     await tx.session.update({
       where: { id: sessionId },
       data: { total_enrolled: { increment: 1 } },
     });
 
-    await tx.notification.create({
-      data: {
-        student_id: studentId,
-        entry_id: entry.id,
-        message: `You are in the queue for ${session.title}. Queue number: ${queueNumber}. Estimated time: ${assignedTime.toLocaleString()}.`,
-        type: 'confirmation',
-      },
-    });
+    if (studentId) {
+      await tx.notification.create({
+        data: {
+          student_id: studentId,
+          entry_id: entry.id,
+          message: `You are in the queue for ${session.title}. Queue number: ${queueNumber}. Estimated time: ${assignedTime.toLocaleString()}.`,
+          type: 'confirmation',
+        },
+      });
+    }
 
     return {
       type: 'slot',
@@ -117,7 +141,7 @@ export async function joinQueue(
         session_id: entry.session_id,
       },
     };
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 }
 
 /**
@@ -161,7 +185,7 @@ export async function compactQueue(sessionId: string): Promise<void> {
         data: { current_serving: newCurrentServing },
       });
     }
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 }
 
 /**
@@ -169,8 +193,8 @@ export async function compactQueue(sessionId: string): Promise<void> {
  * Returns promoted entry and student_id for socket emit, or null if no one to promote.
  */
 export async function promoteFromWaitlist(sessionId: string): Promise<{
-  entry: { id: string; queue_number: number; assigned_time: Date; student_id: string };
-  student_id: string;
+  entry: { id: string; queue_number: number; assigned_time: Date; student_id: string | null };
+  student_id: string | null;
 } | null> {
   return await prisma.$transaction(async (tx) => {
     const first = await tx.noShowWaitlist.findFirst({
@@ -231,11 +255,11 @@ export async function promoteFromWaitlist(sessionId: string): Promise<{
         id: entry.id,
         queue_number: entry.queue_number,
         assigned_time: entry.assigned_time,
-        student_id: entry.student_id,
+        student_id: entry.student_id ?? null,
       },
-      student_id: first.student_id,
+      student_id: first.student_id ?? null,
     };
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 }
 
 /**
@@ -311,5 +335,5 @@ export async function setEntryPriority(
       where: { id: sessionId },
       data: { current_serving: newCurrentServing },
     });
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 }

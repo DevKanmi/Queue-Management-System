@@ -13,7 +13,7 @@ model User {
   password_hash  String
   full_name      String
   phone          String?
-  role           String    // superadmin | dept_admin | lecturer | student
+  role           String    // superadmin | dept_admin | lecturer | student | organizer
   department_id  String?
   faculty        String?
   department     String?   // student's department name (for RESTRICTED filtering)
@@ -27,6 +27,8 @@ model User {
   waitlist_entries NoShowWaitlist[]
   notifications   Notification[]
   session_logs    SessionLog[]
+  owned_orgs      Organization[] @relation("OrgOwner")
+  org_memberships OrgMember[]
 }
 
 model Department {
@@ -50,7 +52,9 @@ model Course {
 model Session {
   id              String   @id @default(uuid())
   title           String
-  department_id   String
+  department_id   String?
+  org_id          String?
+  join_code       String?  @unique
   created_by      String
   date            DateTime @db.Date
   start_time      DateTime @db.Time(0)
@@ -63,8 +67,9 @@ model Session {
   current_serving  Int      @default(0)   // queue_number currently being served (0 = none)
   created_at       DateTime @default(now())
 
-  department Department @relation(fields: [department_id], references: [id])
-  creator    User       @relation("SessionCreator", fields: [created_by], references: [id])
+  department   Department?   @relation(fields: [department_id], references: [id])
+  organization Organization? @relation(fields: [org_id], references: [id])
+  creator      User          @relation("SessionCreator", fields: [created_by], references: [id])
   queue_entries QueueEntry[]
   waitlist    NoShowWaitlist[]
   session_logs SessionLog[]
@@ -73,7 +78,11 @@ model Session {
 model QueueEntry {
   id             String    @id @default(uuid())
   session_id     String
-  student_id     String
+  student_id     String?
+  guest_name     String?
+  guest_phone    String?
+  guest_email    String?
+  guest_token    String?   @unique
   queue_number   Int
   assigned_time  DateTime
   priority_level String    @default("routine") // routine | urgent | emergency
@@ -82,8 +91,8 @@ model QueueEntry {
   joined_at      DateTime  @default(now())
   served_at      DateTime?
 
-  session Session @relation(fields: [session_id], references: [id])
-  student User    @relation(fields: [student_id], references: [id])
+  session Session  @relation(fields: [session_id], references: [id])
+  student User?    @relation(fields: [student_id], references: [id])
   notifications Notification[]
 }
 
@@ -123,4 +132,30 @@ model SessionLog {
 
   session Session @relation(fields: [session_id], references: [id])
   admin   User    @relation(fields: [admin_id], references: [id])
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  owner_id    String
+  created_at  DateTime @default(now())
+
+  owner    User        @relation("OrgOwner", fields: [owner_id], references: [id])
+  members  OrgMember[]
+  sessions Session[]
+}
+
+model OrgMember {
+  id        String   @id @default(uuid())
+  org_id    String
+  user_id   String
+  role      String   @default("admin") // owner | admin
+  joined_at DateTime @default(now())
+
+  org  Organization @relation(fields: [org_id], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [user_id], references: [id])
+
+  @@unique([org_id, user_id])
 }

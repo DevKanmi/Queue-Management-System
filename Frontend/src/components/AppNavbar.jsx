@@ -4,7 +4,7 @@
  */
 import { Link } from 'react-router-dom';
 
-export default function AppNavbar({ title = 'UNILAG Queue', right }) {
+export default function AppNavbar({ title = 'QueueFlow', right }) {
   return (
     <header
       className="sticky top-0 z-50 h-16 bg-background/80 backdrop-blur-xl border-b border-border"

@@ -128,7 +128,7 @@ export async function getQueueState(req: Request, res: Response, next: NextFunct
     let position: number | null = null;
     let estimatedWaitMinutes: number | null = null;
     if (myEntry) {
-      position = myEntry.queue_number - currentServing;
+      position = Math.max(0, myEntry.queue_number - currentServing - 1);
       if (position > 0) estimatedWaitMinutes = position * slotDuration;
     }
 
@@ -252,19 +252,21 @@ export async function cancelEntry(req: Request, res: Response, next: NextFunctio
 
     const promoted = await promoteFromWaitlist(sessionId);
     if (promoted) {
-      const student = await prisma.user.findUnique({ where: { id: promoted.student_id }, select: { email: true } });
-      if (student?.email) {
-        notificationService.sendPromotionEmail(
-          student.email,
-          session.title,
-          promoted.entry.queue_number,
-          promoted.entry.assigned_time
-        );
+      if (promoted.student_id) {
+        const student = await prisma.user.findUnique({ where: { id: promoted.student_id }, select: { email: true } });
+        if (student?.email) {
+          notificationService.sendPromotionEmail(
+            student.email,
+            session.title,
+            promoted.entry.queue_number,
+            promoted.entry.assigned_time
+          );
+        }
+        socketService.slotAssigned(promoted.student_id, {
+          queueNumber: promoted.entry.queue_number,
+          assignedTime: promoted.entry.assigned_time.toISOString(),
+        });
       }
-      socketService.slotAssigned(promoted.student_id, {
-        queueNumber: promoted.entry.queue_number,
-        assignedTime: promoted.entry.assigned_time.toISOString(),
-      });
     }
 
     const updatedSession = await prisma.session.findUnique({

@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth';
 import Home from './pages/Home';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import RegisterOrganizer from './pages/auth/RegisterOrganizer';
 import StudentLayout from './layouts/StudentLayout';
 import StudentDashboard from './pages/student/Dashboard';
 import QueueStatus from './pages/student/QueueStatus';
@@ -13,6 +14,15 @@ import SessionDetail from './pages/admin/SessionDetail';
 import LiveSession from './pages/admin/LiveSession';
 import Analytics from './pages/admin/Analytics';
 import Platform from './pages/admin/Platform';
+import OrgLayout from './layouts/OrgLayout';
+import OrgDashboard from './pages/org/Dashboard';
+import CreateOrg from './pages/org/CreateOrg';
+import OrgDetail from './pages/org/OrgDetail';
+import CreateOrgSession from './pages/org/CreateOrgSession';
+import OrgSessionDetail from './pages/org/OrgSessionDetail';
+import OrgLiveSession from './pages/org/OrgLiveSession';
+import PublicJoin from './pages/public/PublicJoin';
+import PublicStatus from './pages/public/PublicStatus';
 import LoadingScreen from './components/LoadingScreen';
 
 function ProtectedRoute({ children, allowedRoles }) {
@@ -25,7 +35,9 @@ function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/login" replace />;
   }
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to={user.role === 'student' ? '/student' : '/admin'} replace />;
+    if (user.role === 'student') return <Navigate to="/student" replace />;
+    if (user.role === 'organizer') return <Navigate to="/org" replace />;
+    return <Navigate to="/admin" replace />;
   }
   return children;
 }
@@ -62,6 +74,28 @@ function App() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="platform" element={<Platform />} />
       </Route>
+      {/* Organizer routes */}
+      <Route
+        path="/org"
+        element={
+          <ProtectedRoute allowedRoles={['organizer']}>
+            <OrgLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<OrgDashboard />} />
+        <Route path="new" element={<CreateOrg />} />
+        <Route path=":slug/sessions/new" element={<CreateOrgSession />} />
+        <Route path=":slug/sessions/:id/live" element={<OrgLiveSession />} />
+        <Route path=":slug/sessions/:id" element={<OrgSessionDetail />} />
+        <Route path=":slug" element={<OrgDetail />} />
+      </Route>
+
+      {/* Public (no auth) routes */}
+      <Route path="/register/organizer" element={<RegisterOrganizer />} />
+      <Route path="/q/:joinCode/status" element={<PublicStatus />} />
+      <Route path="/q/:joinCode" element={<PublicJoin />} />
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

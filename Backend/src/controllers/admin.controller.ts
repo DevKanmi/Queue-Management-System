@@ -15,10 +15,10 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   CLOSED: [],
 };
 
-function canAccessSession(user: { id: string; role: string; department_id: string | null }, session: { created_by: string; department_id: string }) {
+function canAccessSession(user: { id: string; role: string; department_id: string | null }, session: { created_by: string; department_id: string | null }) {
   if (user.role === 'superadmin') return true;
   if (user.role === 'lecturer' && session.created_by === user.id) return true;
-  if (user.role === 'dept_admin' && session.department_id === user.department_id) return true;
+  if (user.role === 'dept_admin' && session.department_id != null && session.department_id === user.department_id) return true;
   return false;
 }
 
@@ -432,7 +432,7 @@ export async function callNext(req: Request, res: Response, next: NextFunction):
         queue_number: nextEntry.queue_number + 3,
       },
     });
-    if (threeAhead) {
+    if (threeAhead && threeAhead.student_id) {
       socketService.yourTurnSoon(sessionId, threeAhead.student_id, {
         positionsAhead: 3,
         estimatedMinutes: 3 * session.slot_duration,
@@ -568,14 +568,16 @@ export async function skipStudent(req: Request, res: Response, next: NextFunctio
 
     await compactQueue(sessionId);
 
-    socketService.studentNoShow(session.department_id, {
-      sessionId,
-      queueNumber,
-      studentId: entry.student_id,
-    });
+    if (session.department_id && entry.student_id) {
+      socketService.studentNoShow(session.department_id, {
+        sessionId,
+        queueNumber,
+        studentId: entry.student_id,
+      });
+    }
 
     const promoted = await promoteFromWaitlist(sessionId);
-    if (promoted) {
+    if (promoted && promoted.student_id) {
       const student = await prisma.user.findUnique({ where: { id: promoted.student_id }, select: { email: true } });
       if (student?.email) {
         notificationService.sendPromotionEmail(

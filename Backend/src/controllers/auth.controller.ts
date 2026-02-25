@@ -196,3 +196,49 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
     next(err);
   }
 }
+
+export async function registerOrganizer(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email, password, full_name, phone } = req.body as {
+      email?: string;
+      password?: string;
+      full_name?: string;
+      phone?: string;
+    };
+    if (!email?.trim() || !password || !full_name?.trim()) {
+      res.status(400).json({ status: 'error', message: 'Email, password and full name are required' });
+      return;
+    }
+    if (password.length < 8) {
+      res.status(400).json({ status: 'error', message: 'Password must be at least 8 characters' });
+      return;
+    }
+    const existing = await prisma.user.findFirst({ where: { email: email.trim().toLowerCase() } });
+    if (existing) {
+      res.status(400).json({ status: 'error', message: 'Email already registered' });
+      return;
+    }
+    const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+    const user = await prisma.user.create({
+      data: {
+        email: email.trim().toLowerCase(),
+        password_hash,
+        full_name: full_name.trim(),
+        phone: phone?.trim() || null,
+        role: 'organizer',
+      },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        phone: true,
+        role: true,
+        is_verified: true,
+        created_at: true,
+      },
+    });
+    res.status(201).json({ status: 'success', data: { user } });
+  } catch (err) {
+    next(err);
+  }
+}

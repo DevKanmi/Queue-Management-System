@@ -12,6 +12,8 @@ import adminRoutes from './routes/admin.routes';
 import notificationsRoutes from './routes/notifications.routes';
 import departmentsRoutes from './routes/departments.routes';
 import coursesRoutes from './routes/courses.routes';
+import orgsRoutes from './routes/orgs.routes';
+import publicRoutes from './routes/public.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -25,6 +27,8 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/departments', departmentsRoutes);
 app.use('/api/v1/courses', coursesRoutes);
+app.use('/api/v1/orgs', orgsRoutes);
+app.use('/api/v1/public', publicRoutes);
 
 // 404 — unknown routes return clean JSON
 app.use((_req, _res, next) => {

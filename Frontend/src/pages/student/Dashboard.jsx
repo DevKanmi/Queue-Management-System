@@ -8,6 +8,30 @@ import SessionCard from '../../components/SessionCard';
 import { Button } from '../../components/ui/button';
 import { api } from '../../services/api';
 
+const ENTRY_STRIP = {
+  waiting: 'bg-primary',
+  serving: 'bg-success',
+  done: 'bg-border',
+  skipped: 'bg-danger',
+  no_show: 'bg-danger',
+};
+
+const ENTRY_STATUS_CLS = {
+  waiting: 'text-primary bg-primary/10 border-primary/20',
+  serving: 'text-success bg-success/10 border-success/20',
+  done: 'text-text-muted bg-surface-elevated border-border',
+  skipped: 'text-danger bg-danger/10 border-danger/20',
+  no_show: 'text-danger bg-danger/10 border-danger/20',
+};
+
+const ENTRY_STATUS_LABEL = {
+  waiting: 'Waiting',
+  serving: 'Serving',
+  done: 'Done',
+  skipped: 'Skipped',
+  no_show: 'No show',
+};
+
 export default function StudentDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -19,7 +43,7 @@ export default function StudentDashboard() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [joinError, setJoinError] = useState('');
   const [sessionToJoin, setSessionToJoin] = useState(null);
-  const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'history'
+  const [activeTab, setActiveTab] = useState('feed');
 
   useEffect(() => {
     api
@@ -57,6 +81,7 @@ export default function StudentDashboard() {
   );
   const upcomingSession = upcomingEntry?.session;
   const assignedTime = upcomingEntry?.assigned_time ? new Date(upcomingEntry.assigned_time) : null;
+
   const [countdown, setCountdown] = useState('');
   useEffect(() => {
     if (!assignedTime) return;
@@ -101,61 +126,89 @@ export default function StudentDashboard() {
         }
       })
       .catch((err) => {
-        setJoinError(err.response?.data?.message || 'We couldn’t add you to the queue. Please try again.');
+        setJoinError(err.response?.data?.message || "We couldn't add you to the queue. Please try again.");
       })
       .finally(() => setJoinLoading(false));
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+      {/* Greeting */}
       <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-text-primary">
         {greeting()}, {firstName} 👋
       </h1>
       <p className="text-text-secondary mt-1 text-sm sm:text-base">View open sessions and join a queue.</p>
 
-      {(upcomingEntry && upcomingSession) && (
-        <div className="mt-6 p-4 rounded-xl border border-primary/30 bg-primary/10 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Clock className="w-6 h-6 text-primary" />
-            <div>
-              <p className="font-semibold text-text-primary">Up next: {upcomingSession.title}</p>
-              <p className="text-sm text-text-muted">
-                #{upcomingEntry.queue_number} · {assignedTime?.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })} {countdown && (countdown === 'Now' ? '· Now' : `· in ${countdown}`)}
-              </p>
-            </div>
-          </div>
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${upcomingSession.id}`)}>
-            View status
-            <ArrowRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-      )}
-
-      {myWaitlists.length > 0 && (
-        <div className="mt-6 space-y-3">
-          <h2 className="text-sm font-semibold text-text-primary">You&apos;re on the waitlist</h2>
-          {myWaitlists.map((w) => (
-            <div
-              key={w.sessionId}
-              className="p-4 rounded-xl border border-warning/30 bg-warning/10 flex flex-wrap items-center justify-between gap-4"
-            >
-              <div>
-                <p className="font-semibold text-text-primary">{w.session?.title ?? 'Session'}</p>
-                <p className="text-sm text-text-muted">Waitlist position #{w.position}</p>
+      {/* Up-next banner */}
+      {upcomingEntry && upcomingSession && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="relative mt-6 overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/8 to-transparent p-5"
+        >
+          <div
+            className="absolute inset-0 pointer-events-none rounded-2xl"
+            style={{ background: 'radial-gradient(ellipse 80% 80% at 100% 50%, rgba(99,102,246,0.12), transparent 70%)' }}
+          />
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-primary" />
               </div>
-              <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${w.sessionId}`)}>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-0.5">Up next</p>
+                <p className="font-bold text-text-primary text-lg leading-tight truncate">{upcomingSession.title}</p>
+                <p className="text-sm text-text-muted">
+                  #{upcomingEntry.queue_number}
+                  {assignedTime ? ` · ${assignedTime.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  {upcomingSession.department?.name ? ` · ${upcomingSession.department.name}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {countdown && (
+                <div className="text-right hidden sm:block">
+                  <p className={cn('text-2xl font-bold leading-none', countdown === 'Now' ? 'text-success' : 'text-text-primary')}>
+                    {countdown === 'Now' ? 'Now!' : countdown}
+                  </p>
+                  {countdown !== 'Now' && <p className="text-xs text-text-muted mt-0.5">remaining</p>}
+                </div>
+              )}
+              <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${upcomingSession.id}`)}>
                 View status
                 <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Waitlist banners */}
+      {myWaitlists.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {myWaitlists.map((w) => (
+            <div
+              key={w.sessionId}
+              className="flex rounded-xl border border-warning/30 bg-warning/8 overflow-hidden"
+            >
+              <div className="w-1 shrink-0 bg-warning" />
+              <div className="flex-1 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-text-primary text-sm">{w.session?.title ?? 'Session'}</p>
+                  <p className="text-xs text-text-muted">Waitlist position <strong>#{w.position}</strong></p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${w.sessionId}`)}>
+                  View status
+                  <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Tabs */}
       <div className="mt-8 flex gap-1 p-1 rounded-xl bg-surface-elevated border border-border w-fit">
         <button
           type="button"
@@ -181,10 +234,11 @@ export default function StudentDashboard() {
           )}
         >
           <History className="w-4 h-4" />
-          Session history
+          My history
         </button>
       </div>
 
+      {/* Session feed */}
       {activeTab === 'feed' && (
         <section className="mt-6">
           <h2 className="text-xl font-semibold text-text-primary mb-4">Join a queue</h2>
@@ -228,63 +282,101 @@ export default function StudentDashboard() {
         </section>
       )}
 
+      {/* History tab */}
       {activeTab === 'history' && (
         <section className="mt-6">
           <h2 className="text-xl font-semibold text-text-primary mb-4">Your queues & history</h2>
           {entriesLoading ? (
-            <div className="rounded-2xl border border-border bg-surface/60 p-6 animate-pulse">
-              <div className="h-5 bg-surface-elevated rounded w-1/3 mb-4" />
-              <div className="h-4 bg-surface-elevated rounded w-2/3" />
+            <div className="space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex rounded-xl border border-border bg-surface/60 overflow-hidden animate-pulse h-16">
+                  <div className="w-1 shrink-0 bg-surface-elevated" />
+                  <div className="flex-1 p-4 space-y-2">
+                    <div className="h-4 bg-surface-elevated rounded w-1/2" />
+                    <div className="h-3 bg-surface-elevated rounded w-1/3" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : myEntries.length === 0 && myWaitlists.length === 0 ? (
             <div className="rounded-2xl border border-border bg-surface/40 p-6 text-center text-text-muted text-sm">
-              You haven’t joined any queues yet. Switch to <strong>Session feed</strong> to join one.
+              You haven't joined any queues yet. Switch to <strong>Session feed</strong> to join one.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
+              {/* Waitlist entries */}
               {myWaitlists.map((w) => (
-                <div
+                <motion.div
                   key={`waitlist-${w.sessionId}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4"
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex rounded-xl border border-warning/25 bg-surface/60 overflow-hidden"
                 >
-                  <div>
-                    <p className="font-medium text-text-primary">{w.session?.title ?? 'Session'}</p>
-                    <p className="text-sm text-text-muted">
-                      {w.session?.department?.name} · Waitlist position <strong>#{w.position}</strong>
-                    </p>
+                  <div className="w-1 shrink-0 bg-warning" />
+                  <div className="flex-1 p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-warning/10 border border-warning/20 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-warning">#{w.position}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-primary truncate">{w.session?.title ?? 'Session'}</p>
+                        <p className="text-xs text-text-muted">{w.session?.department?.name ?? ''}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-md border text-warning bg-warning/10 border-warning/20">
+                        Waitlist
+                      </span>
+                      <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${w.sessionId}`)}>
+                        View
+                        <ArrowRight className="w-3 h-3 ml-1" />
+                      </Button>
+                    </div>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${w.sessionId}`)}>
-                    View status
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
+                </motion.div>
               ))}
-              {myEntries.map((entry) => {
+
+              {/* Queue entries */}
+              {myEntries.map((entry, i) => {
                 const s = entry.session;
                 const isActive = entry.status === 'waiting' || entry.status === 'serving';
-                const dateStr = s?.date ? new Date(s.date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+                const dateStr = s?.date
+                  ? new Date(s.date).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })
+                  : '';
                 return (
-                  <div
+                  <motion.div
                     key={entry.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/60 p-4"
+                    initial={{ opacity: 0, x: -4 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                    className="flex rounded-xl border border-border bg-surface/60 overflow-hidden"
                   >
-                    <div>
-                      <p className="font-medium text-text-primary">{s?.title ?? 'Session'}</p>
-                      <p className="text-sm text-text-muted">
-                        {s?.department?.name} · {dateStr} · #{entry.queue_number} · <span className="capitalize">{entry.status.replace('_', ' ')}</span>
-                      </p>
+                    <div className={cn('w-1 shrink-0', ENTRY_STRIP[entry.status] ?? 'bg-border')} />
+                    <div className="flex-1 p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-lg bg-surface-elevated border border-border flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-text-muted">#{entry.queue_number}</span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-text-primary truncate">{s?.title ?? 'Session'}</p>
+                          <p className="text-xs text-text-muted">
+                            {[s?.department?.name, dateStr].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={cn('text-xs font-medium px-2 py-0.5 rounded-md border', ENTRY_STATUS_CLS[entry.status] ?? 'text-text-muted bg-surface-elevated border-border')}>
+                          {ENTRY_STATUS_LABEL[entry.status] ?? entry.status}
+                        </span>
+                        {isActive && (
+                          <Button variant="secondary" size="sm" onClick={() => navigate(`/student/queue/${s?.id}`)}>
+                            View
+                            <ArrowRight className="w-3 h-3 ml-1" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    {isActive && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => navigate(`/student/queue/${s?.id}`)}
-                      >
-                        View status
-                        <ArrowRight className="w-4 h-4 ml-1" />
-                      </Button>
-                    )}
-                  </div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -292,6 +384,7 @@ export default function StudentDashboard() {
         </section>
       )}
 
+      {/* Join confirmation modal */}
       {sessionToJoin && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
