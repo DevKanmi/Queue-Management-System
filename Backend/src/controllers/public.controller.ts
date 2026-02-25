@@ -3,6 +3,9 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../config/db';
 import { joinQueue as joinQueueService } from '../services/queue.service';
 import * as socketService from '../services/socket.service';
+import { sendGuestConfirmationEmail } from '../services/notification.service';
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 /**
  * GET /public/q/:joinCode — Public session info (no auth)
@@ -60,6 +63,10 @@ export async function joinPublicQueue(req: Request, res: Response, next: NextFun
       res.status(400).json({ status: 'error', message: 'Phone number is required' });
       return;
     }
+    if (!email?.trim()) {
+      res.status(400).json({ status: 'error', message: 'Email address is required' });
+      return;
+    }
 
     const session = await prisma.session.findUnique({ where: { join_code: joinCode.toUpperCase() } });
     if (!session) {
@@ -72,13 +79,19 @@ export async function joinPublicQueue(req: Request, res: Response, next: NextFun
     }
 
     const guest_token = randomUUID();
+    const trimmedEmail = email.trim();
+    const trimmedName = name.trim();
+    const code = joinCode.toUpperCase();
 
     const result = await joinQueueService(session.id, null, 'routine', {
-      guest_name: name.trim(),
+      guest_name: trimmedName,
       guest_phone: phone.trim(),
-      guest_email: email?.trim() || undefined,
+      guest_email: trimmedEmail,
       guest_token,
     });
+
+    // Build the persistent status URL with token embedded
+    const statusUrl = `${FRONTEND_URL}/q/${code}/status?token=${guest_token}`;
 
     if (result.type === 'slot') {
       const waitingCount = await prisma.queueEntry.count({ where: { session_id: session.id, status: 'waiting' } });
@@ -87,6 +100,14 @@ export async function joinPublicQueue(req: Request, res: Response, next: NextFun
         totalWaiting: waitingCount,
         estimatedWaitMinutes: waitingCount * session.slot_duration,
       });
+
+      // Send confirmation email in the background — does not block the response.
+      // On success, mark confirmation_sent=true. On failure, it stays false so
+      // the scheduler recovery job retries it automatically.
+      sendGuestConfirmationEmail(trimmedEmail, trimmedName, session.title, result.entry.queue_number, statusUrl)
+        .then(() => prisma.queueEntry.update({ where: { id: result.entry.id }, data: { confirmation_sent: true } }))
+        .catch((err) => console.error('[Public] Confirmation email failed, will retry via scheduler:', err));
+
       res.status(201).json({
         status: 'success',
         data: {
@@ -100,6 +121,11 @@ export async function joinPublicQueue(req: Request, res: Response, next: NextFun
         },
       });
     } else {
+      // Waitlist — still send confirmation so they have the status URL
+      sendGuestConfirmationEmail(trimmedEmail, trimmedName, session.title, result.position, statusUrl).catch((err) => {
+        console.error('[Public] Failed to send guest confirmation email (waitlist):', err);
+      });
+
       res.status(201).json({
         status: 'success',
         data: {

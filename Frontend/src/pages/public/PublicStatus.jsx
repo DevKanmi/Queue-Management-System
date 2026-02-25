@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Users, CheckCircle2, XCircle, Ticket, ArrowRight, RefreshCw } from 'lucide-react';
 import { Card, CardContent } from '../../components/ui/card';
@@ -24,14 +24,23 @@ function PositionDots({ ahead, max = 10 }) {
 export default function PublicStatus() {
   const { joinCode } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
 
-  const guestToken = joinCode
-    ? sessionStorage.getItem(`guest_token_${joinCode.toUpperCase()}`)
-    : null;
+  // Token resolution order: URL param → sessionStorage (fallback for older links)
+  const tokenFromUrl = searchParams.get('token');
+  const tokenFromStorage = joinCode ? sessionStorage.getItem(`guest_token_${joinCode.toUpperCase()}`) : null;
+  const guestToken = tokenFromUrl || tokenFromStorage;
+
+  // Persist URL token to sessionStorage so subsequent navigations without the param still work
+  useEffect(() => {
+    if (tokenFromUrl && joinCode) {
+      sessionStorage.setItem(`guest_token_${joinCode.toUpperCase()}`, tokenFromUrl);
+    }
+  }, [tokenFromUrl, joinCode]);
 
   const load = useCallback(() => {
     if (!joinCode || !guestToken) return;
@@ -79,7 +88,7 @@ export default function PublicStatus() {
             <Ticket className="w-8 h-8 text-warning" />
           </div>
           <h2 className="text-xl font-bold text-text-primary mb-1">No ticket found</h2>
-          <p className="text-text-muted text-sm mb-6">Your ticket is stored in this browser session and may have expired.</p>
+          <p className="text-text-muted text-sm mb-6">Use the link from your confirmation email to get back to your position, or join again below.</p>
           <Button onClick={() => navigate(`/q/${joinCode}`)}>
             Join again <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
@@ -264,7 +273,7 @@ export default function PublicStatus() {
 
         {isWaiting && (
           <p className="text-center text-xs text-text-muted">
-            Updates automatically · Keep this tab open
+            Updates automatically · You'll get an email when it's nearly your turn
           </p>
         )}
       </motion.div>

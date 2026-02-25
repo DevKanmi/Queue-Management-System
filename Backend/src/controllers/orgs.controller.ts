@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/db';
 import { compactQueue, promoteFromWaitlist } from '../services/queue.service';
 import * as socketService from '../services/socket.service';
+import { sendGuestPositionReminderEmail } from '../services/notification.service';
+
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const POSITION_REMINDER_THRESHOLD = 3; // send reminder when this many people are ahead
 
 const VALID_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['OPEN'],
@@ -331,6 +335,30 @@ export async function callNext(req: Request, res: Response, next: NextFunction):
 
     const waitingCount = await prisma.queueEntry.count({ where: { session_id: id, status: 'waiting' } });
     socketService.queueUpdate(id, { currentServing: nextEntry.queue_number, totalWaiting: waitingCount, estimatedWaitMinutes: waitingCount * session.slot_duration });
+
+    // Send position reminder to the guest who is now POSITION_REMINDER_THRESHOLD places away.
+    // Failure leaves reminder_sent=false so the scheduler recovery job will retry.
+    if (session.join_code) {
+      const waitingEntries = await prisma.queueEntry.findMany({
+        where: { session_id: id, status: 'waiting' },
+        orderBy: { queue_number: 'asc' },
+        take: POSITION_REMINDER_THRESHOLD + 1,
+      });
+      const targetEntry = waitingEntries[POSITION_REMINDER_THRESHOLD - 1]; // 0-indexed → index 2 = 3rd waiting
+      if (targetEntry && targetEntry.guest_email && targetEntry.guest_token && !targetEntry.reminder_sent) {
+        const statusUrl = `${FRONTEND_URL}/q/${session.join_code}/status?token=${targetEntry.guest_token}`;
+        sendGuestPositionReminderEmail(
+          targetEntry.guest_email,
+          targetEntry.guest_name ?? 'Guest',
+          session.title,
+          targetEntry.queue_number,
+          POSITION_REMINDER_THRESHOLD - 1, // people ahead at time of sending
+          statusUrl
+        )
+          .then(() => prisma.queueEntry.update({ where: { id: targetEntry.id }, data: { reminder_sent: true } }))
+          .catch((err) => console.error('[Orgs] Failed to send position reminder:', err));
+      }
+    }
 
     res.json({ status: 'success', data: { queue_number: nextEntry.queue_number } });
   } catch (err) {

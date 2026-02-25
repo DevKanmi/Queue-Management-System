@@ -63,16 +63,18 @@ export default function PublicJoin() {
     setError('');
     if (!name.trim()) { setError('Name is required'); return; }
     if (!phone.trim()) { setError('Phone number is required'); return; }
+    if (!email.trim()) { setError('Email address is required'); return; }
     setSubmitting(true);
     try {
       const { data } = await api.post(`/public/q/${joinCode.toUpperCase()}/join`, {
         name: name.trim(),
         phone: phone.trim(),
-        email: email.trim() || undefined,
+        email: email.trim(),
       });
       const { guest_token } = data.data;
+      // Save to sessionStorage as a fallback; the token is also embedded in the URL
       sessionStorage.setItem(`guest_token_${joinCode.toUpperCase()}`, guest_token);
-      navigate(`/q/${joinCode.toUpperCase()}/status`);
+      navigate(`/q/${joinCode.toUpperCase()}/status?token=${guest_token}`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to join queue');
     } finally {
@@ -179,7 +181,8 @@ export default function PublicJoin() {
                   <form onSubmit={handleJoin} className="space-y-3">
                     <Input placeholder="Your name *" value={name} onChange={(e) => setName(e.target.value)} required />
                     <Input type="tel" placeholder="Phone number *" value={phone} onChange={(e) => setPhone(e.target.value)} required />
-                    <Input type="email" placeholder="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <Input type="email" placeholder="Email address *" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                    <p className="text-xs text-text-muted">We'll email your queue ticket and remind you when it's nearly your turn.</p>
                     {error && (
                       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-danger flex items-center gap-1.5">
                         <XCircle className="w-4 h-4 shrink-0" /> {error}

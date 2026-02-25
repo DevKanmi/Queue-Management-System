@@ -87,8 +87,9 @@ model QueueEntry {
   assigned_time  DateTime
   priority_level String    @default("routine") // routine | urgent | emergency
   status         String    @default("waiting") // waiting | serving | completed | no_show | cancelled
-  reminder_sent  Boolean   @default(false)
-  joined_at      DateTime  @default(now())
+  reminder_sent      Boolean   @default(false)
+  confirmation_sent  Boolean   @default(false)
+  joined_at          DateTime  @default(now())
   served_at      DateTime?
 
   session Session  @relation(fields: [session_id], references: [id])

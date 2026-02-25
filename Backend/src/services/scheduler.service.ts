@@ -4,6 +4,9 @@ import * as notificationService from './notification.service';
 import { compactQueue, promoteFromWaitlist } from './queue.service';
 import * as socketService from './socket.service';
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+const POSITION_REMINDER_THRESHOLD = 3;
+
 const GRACE_MINUTES = Number(process.env.GRACE_PERIOD_MINUTES) || 10;
 const REMINDER_MINUTES = Number(process.env.REMINDER_MINUTES_BEFORE) || 30;
 
@@ -167,9 +170,111 @@ async function runDailyCloseJob() {
   }
 }
 
+/**
+ * Job 4 — Guest confirmation email recovery: find guest QueueEntries where confirmation_sent=false
+ * (email failed or never sent on join). Retries every 5 minutes until it succeeds.
+ * Only targets entries that are still waiting/serving in non-closed sessions.
+ */
+async function runGuestConfirmationRecoveryJob() {
+  try {
+    const pendingEntries = await prisma.queueEntry.findMany({
+      where: {
+        confirmation_sent: false,
+        guest_email: { not: null },
+        guest_token: { not: null },
+        status: { in: ['waiting', 'serving'] },
+        session: { state: { not: 'CLOSED' }, join_code: { not: null } },
+      },
+      include: {
+        session: { select: { title: true, join_code: true } },
+      },
+    });
+
+    for (const entry of pendingEntries) {
+      if (!entry.session.join_code) continue;
+      const statusUrl = `${FRONTEND_URL}/q/${entry.session.join_code}/status?token=${entry.guest_token}`;
+      try {
+        await notificationService.sendGuestConfirmationEmail(
+          entry.guest_email!,
+          entry.guest_name ?? 'Guest',
+          entry.session.title,
+          entry.queue_number,
+          statusUrl
+        );
+        await prisma.queueEntry.update({ where: { id: entry.id }, data: { confirmation_sent: true } });
+      } catch (err) {
+        console.error(`[Scheduler] Confirmation email failed for entry ${entry.id}, will retry:`, err);
+      }
+    }
+
+    if (pendingEntries.length > 0) {
+      console.log(`[Scheduler] Processed ${pendingEntries.length} pending confirmation email(s).`);
+    }
+  } catch (err) {
+    console.error('[Scheduler] Confirmation recovery job error:', err);
+  }
+}
+
+/**
+ * Job 5 — Guest position reminder recovery: find guest entries that haven't been reminded,
+ * are still waiting in an ACTIVE session, and are now within POSITION_REMINDER_THRESHOLD
+ * places of the front. This catches failures from callNext and retries them automatically.
+ */
+async function runGuestReminderRecoveryJob() {
+  try {
+    const pendingEntries = await prisma.queueEntry.findMany({
+      where: {
+        status: 'waiting',
+        reminder_sent: false,
+        guest_email: { not: null },
+        guest_token: { not: null },
+        session: { state: 'ACTIVE', join_code: { not: null } },
+      },
+      include: {
+        session: { select: { id: true, title: true, join_code: true } },
+      },
+    });
+
+    for (const entry of pendingEntries) {
+      const positionAhead = await prisma.queueEntry.count({
+        where: {
+          session_id: entry.session_id,
+          status: 'waiting',
+          queue_number: { lt: entry.queue_number },
+        },
+      });
+
+      if (positionAhead <= POSITION_REMINDER_THRESHOLD && entry.session.join_code) {
+        const statusUrl = `${FRONTEND_URL}/q/${entry.session.join_code}/status?token=${entry.guest_token}`;
+        try {
+          await notificationService.sendGuestPositionReminderEmail(
+            entry.guest_email!,
+            entry.guest_name ?? 'Guest',
+            entry.session.title,
+            entry.queue_number,
+            positionAhead,
+            statusUrl
+          );
+          await prisma.queueEntry.update({ where: { id: entry.id }, data: { reminder_sent: true } });
+        } catch (err) {
+          console.error(`[Scheduler] Guest reminder failed for entry ${entry.id}, will retry:`, err);
+        }
+      }
+    }
+
+    if (pendingEntries.length > 0) {
+      console.log(`[Scheduler] Checked ${pendingEntries.length} pending guest reminder(s).`);
+    }
+  } catch (err) {
+    console.error('[Scheduler] Guest reminder recovery job error:', err);
+  }
+}
+
 export function startScheduler() {
   cron.schedule('*/5 * * * *', runReminderJob);
   cron.schedule('*/5 * * * *', runNoShowJob);
+  cron.schedule('*/5 * * * *', runGuestConfirmationRecoveryJob);
+  cron.schedule('*/5 * * * *', runGuestReminderRecoveryJob);
   cron.schedule('59 23 * * *', runDailyCloseJob);
-  console.log('[Scheduler] Started: reminder & no-show every 5 min, daily close at 23:59');
+  console.log('[Scheduler] Started: reminder, no-show, guest confirmation & position recovery every 5 min, daily close at 23:59');
 }
