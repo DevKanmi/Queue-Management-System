@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Building2 } from 'lucide-react';
@@ -13,6 +13,14 @@ export default function CreateOrg() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
+
+  // Redirect if org already exists
+  useEffect(() => {
+    api.get('/orgs').then(({ data }) => {
+      const orgs = data?.data?.orgs ?? [];
+      if (orgs.length > 0) navigate(`/org/${orgs[0].slug}`, { replace: true });
+    }).catch(() => {});
+  }, [navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
