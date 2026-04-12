@@ -2,6 +2,7 @@
 node_modules/
 
 .cursorrules
+CLAUDE.md
 
 docker-compose.yml
 Backend/node_modules/
