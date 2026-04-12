@@ -30,7 +30,7 @@ app.use('/api/v1/courses', coursesRoutes);
 app.use('/api/v1/orgs', orgsRoutes);
 app.use('/api/v1/public', publicRoutes);
 
-// 404 — unknown routes return clean JSON
+// 404 — unknown routes
 app.use((_req, _res, next) => {
   next(Object.assign(new Error('Not found'), { statusCode: 404 }));
 });

@@ -56,6 +56,13 @@ export async function createOrg(req: Request, res: Response, next: NextFunction)
       res.status(400).json({ status: 'error', message: 'Organization name is required' });
       return;
     }
+    // One org per organizer
+    const existing = await prisma.organization.findFirst({ where: { owner_id: user.id } });
+    if (existing) {
+      res.status(400).json({ status: 'error', message: 'You already have an organization', data: { slug: existing.slug } });
+      return;
+    }
+
     const baseSlug = slugify(name.trim());
     if (!baseSlug) {
       res.status(400).json({ status: 'error', message: 'Name must contain at least one alphanumeric character' });
