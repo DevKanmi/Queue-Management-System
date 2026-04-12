@@ -181,6 +181,7 @@ export async function createOrgSession(req: Request, res: Response, next: NextFu
         capacity: Number(capacity),
         slot_duration: Number(slot_duration),
         visibility: visibility?.toUpperCase() === 'RESTRICTED' ? 'RESTRICTED' : 'OPEN',
+        state: 'OPEN',
       },
     });
     res.status(201).json({ status: 'success', data: { session } });
