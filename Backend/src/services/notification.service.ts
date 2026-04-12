@@ -18,7 +18,7 @@ function getTransporter(): nodemailer.Transporter | null {
     secure: false,
     family: 4, // force IPv4 — Render free tier has no outbound IPv6
     auth: { user, pass },
-  });
+  } as any);
   return transporter;
 }
 
