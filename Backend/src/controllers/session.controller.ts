@@ -15,6 +15,7 @@ export async function listSessionsForStudent(req: Request, res: Response, next: 
     const sessions = await prisma.session.findMany({
       where: {
         state: { in: ['OPEN', 'ACTIVE'] },
+        org_id: null,
         OR: [
           { visibility: 'OPEN' },
           {
@@ -117,6 +118,10 @@ export async function getSessionByIdForStudent(req: Request, res: Response, next
       },
     });
     if (!session) {
+      res.status(404).json({ status: 'error', message: 'Session not found' });
+      return;
+    }
+    if (session.org_id !== null) {
       res.status(404).json({ status: 'error', message: 'Session not found' });
       return;
     }

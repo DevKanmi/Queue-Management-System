@@ -13,12 +13,12 @@ function getTransporter(): nodemailer.Transporter | null {
     return null;
   }
   transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    family: 4, // force IPv4 — Render free tier has no outbound IPv6
-    auth: { user, pass },
-  } as any);
+    service: 'gmail',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
   return transporter;
 }
 

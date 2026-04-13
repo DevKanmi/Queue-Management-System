@@ -13,6 +13,7 @@ async function getSessionForStudent(sessionId: string, user: { role: string; dep
     include: { department: { select: { id: true, name: true } } },
   });
   if (!session) return { session: null, error: 'Session not found' };
+  if (session.org_id !== null) return { session: null, error: 'Session not found' };
   if (session.state !== 'OPEN' && session.state !== 'ACTIVE') {
     return { session: null, error: 'Session is not open for joining' };
   }
@@ -48,16 +49,14 @@ export async function joinQueue(req: Request, res: Response, next: NextFunction)
     if (result.type === 'slot') {
       const student = await prisma.user.findUnique({ where: { id: user.id }, select: { email: true } });
       if (student?.email) {
-        try {
-          await notificationService.sendConfirmationEmail(
-            student.email,
-            session.title,
-            result.entry.queue_number,
-            result.entry.assigned_time
-          );
-        } catch (err) {
+        notificationService.sendConfirmationEmail(
+          student.email,
+          session.title,
+          result.entry.queue_number,
+          result.entry.assigned_time
+        ).catch((err) => {
           console.error('Queue join: failed to send confirmation email', err);
-        }
+        });
       }
       const waitingCount = await prisma.queueEntry.count({
         where: { session_id: sessionId, status: 'waiting' },
